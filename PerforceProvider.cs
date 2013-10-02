@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Inedo.BuildMaster;
 using Inedo.BuildMaster.Extensibility.Agents;
@@ -8,7 +9,6 @@ using Inedo.BuildMaster.Extensibility.Providers;
 using Inedo.BuildMaster.Extensibility.Providers.SourceControl;
 using Inedo.BuildMaster.Files;
 using Inedo.BuildMaster.Web;
-using Inedo.Linq;
 
 namespace Inedo.BuildMasterExtensions.Perforce
 {
@@ -19,9 +19,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
         "Perforce",
         "Supports most versions of Perforce; requires the Perforce client (P4) to be installed.")]
     [CustomEditor(typeof(PerforceProviderEditor))]
-    [RequiresInterface(typeof(IRemoteBinaryProcessExecuter))]
-    [RequiresInterface(typeof(IFileOperationsExecuter))]
-    public sealed class PerforceProvider : SourceControlProviderBase, IVersioningProvider, IClientCommandProvider
+    public sealed class PerforceProvider : SourceControlProviderBase, ILabelingProvider, IClientCommandProvider
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="PerforceProvider"/> class.
@@ -308,25 +306,30 @@ namespace Inedo.BuildMasterExtensions.Perforce
                 Arguments = argBuffer.ToString()
             };
 
-            var process = ((IRemoteBinaryProcessExecuter)this.Agent).CreateProcess(startInfo);
+            var process = this.Agent.GetService<IRemoteProcessExecuter<IBinaryDataProcess>>().CreateProcess(startInfo);
 
             this.LogDebug("Executing {0}", startInfo.FileName);
             this.LogDebug("  Arguments: {0}", argBufferToDisplay.ToString());
 
+            var stdErr = new MemoryStream();
+            process.ErrorDataReceived += (s, e) => stdErr.Write(e.Data, 0, e.Data.Length);
+
+            var stdOut = new MemoryStream();
+            process.OutputDataReceived += (s, e) => stdOut.Write(e.Data, 0, e.Data.Length);
+
             process.Start();
             process.WaitForExit();
 
-            var stdErr = new StreamReader(process.StandardError).ReadToEnd();
             if (stdErr.Length > 0)
-                throw new ConnectionException(stdErr);
+                throw new ConnectionException(Encoding.UTF8.GetString(stdErr.ToArray()));
 
-
-            this.LogDebug("Parsing {0} bytes of data.", process.StandardOutput.Length);
+            this.LogDebug("Parsing {0} bytes of data.", stdOut.Length);
             var results = new List<Dictionary<string, string>>();
 
             try
             {
-                var reader = new BinaryReader(process.StandardOutput);
+                stdOut.Position = 0;
+                var reader = new BinaryReader(stdOut);
                 while (reader.BaseStream.ReadByte() == '{')
                 {
                     results.Add(ReadPythonDictionary(reader));
@@ -334,17 +337,11 @@ namespace Inedo.BuildMasterExtensions.Perforce
             }
             catch (InvalidDataException ex)
             {
-                process.StandardOutput.Position = 0;
-                var buffer = new byte[process.StandardOutput.Length];
-                process.StandardOutput.Read(buffer, 0, buffer.Length);
-                throw new InvalidDataException("InvalidDataException received on data: " + Convert.ToBase64String(buffer), ex);
+                throw new InvalidDataException("InvalidDataException received on data: " + Convert.ToBase64String(stdOut.ToArray()), ex);
             }
             catch (EndOfStreamException ex)
             {
-                process.StandardOutput.Position = 0;
-                var buffer = new byte[process.StandardOutput.Length];
-                process.StandardOutput.Read(buffer, 0, buffer.Length);
-                throw new EndOfStreamException("EndOfStreamException received on data: " + Convert.ToBase64String(buffer), ex);
+                throw new EndOfStreamException("EndOfStreamException received on data: " + Convert.ToBase64String(stdOut.ToArray()), ex);
             }
 
             //check for errors
