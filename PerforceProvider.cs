@@ -134,8 +134,6 @@ namespace Inedo.BuildMasterExtensions.Perforce
             else
                 P4("sync", filePath);
 
-            
-            
             var fullFilePath = Path.Combine(
                 GetRootPath(),
                 filePath.Replace(this.DirectorySeparator, Path.PathSeparator));
