@@ -95,7 +95,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
             else
                 P4("sync", "//" + sourcePath + "/...");
 
-            var fileOps = (IFileOperationsExecuter)this.Agent;
+            var fileOps = this.Agent.GetService<IFileOperationsExecuter>();
 
             var fullSourcePath = this.GetFullSourcePath(fileOps, sourcePath);
 
@@ -163,7 +163,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
             else
                 P4("sync", "//" + sourcePath + "/...@" + label);
 
-            var fileOps = (IFileOperationsExecuter)this.Agent;
+            var fileOps = this.Agent.GetService<IFileOperationsExecuter>();
 
             var fullSourcePath = this.GetFullSourcePath(fileOps, sourcePath);
 
@@ -466,7 +466,5 @@ namespace Inedo.BuildMasterExtensions.Perforce
 
             return Encoding.UTF8.GetString(reader.ReadBytes(length));
         }
-
-        
     }
 }
