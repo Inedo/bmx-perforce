@@ -1,35 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Inedo.BuildMaster;
 using Inedo.BuildMaster.Extensibility.Agents;
 using Inedo.BuildMaster.Extensibility.Providers;
 using Inedo.BuildMaster.Extensibility.Providers.SourceControl;
 using Inedo.BuildMaster.Files;
 using Inedo.BuildMaster.Web;
+using Inedo.Serialization;
 
 namespace Inedo.BuildMasterExtensions.Perforce
 {
-    /// <summary>
-    /// Provides functionality for getting files, browsing folders, and applying labels in Perforce.
-    /// </summary>
-    [ProviderProperties(
-        "Perforce",
-        "Supports most versions of Perforce; requires the Perforce client (P4) to be installed.")]
+    [DisplayName("Perforce")]
+    [Description("Supports most versions of Perforce; requires the Perforce client (P4) to be installed.")]
     [CustomEditor(typeof(PerforceProviderEditor))]
     public sealed class PerforceProvider : SourceControlProviderBase, ILabelingProvider, IClientCommandProvider
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="PerforceProvider"/> class.
-        /// </summary>
-        public PerforceProvider()
-        {
-            this.MaskPasswordInOutput = false;
-            this.UseForceSync = false;
-        }
-
         /// <summary>
         /// Gets or sets the Perforce user name (null or empty for default).
         /// </summary>
@@ -55,33 +43,12 @@ namespace Inedo.BuildMasterExtensions.Perforce
         /// </summary>
         [Persistent]
         public string ExePath { get; set; }
-        /// <summary>
-        /// Gets the <see cref="T:System.Char"/> used by the
-        /// provider to separate directories/files in a path string.
-        /// </summary>
-        public override char DirectorySeparator
-        {
-            get { return '/'; }
-        }
-        /// <summary>
-        /// Gets a value indicating whether commands have detailed help available.
-        /// </summary>
-        public bool SupportsCommandHelp
-        {
-            get { return true; }
-        }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether the password should be masked in the output
-        /// </summary>
-        [Persistent]
-        public bool MaskPasswordInOutput { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether sync operations should use -f
-        /// </summary>
+        public override char DirectorySeparator => '/';
+        public bool SupportsCommandHelp => true;
         [Persistent]
         public bool UseForceSync { get; set; }
+
+        private bool MaskPasswordInOutput => true;
 
         public override void GetLatest(string sourcePath, string targetPath)
         {
@@ -139,14 +106,8 @@ namespace Inedo.BuildMasterExtensions.Perforce
                 filePath.Replace(this.DirectorySeparator, Path.PathSeparator));
             return File.ReadAllBytes(fullFilePath);
         }
-        public override bool IsAvailable()
-        {
-            return true;
-        }
-        public override void ValidateConnection()
-        {
-            P4("depots");
-        }
+        public override bool IsAvailable() => true;
+        public override void ValidateConnection() => P4("depots");
         public void ApplyLabel(string label, string sourcePath)
         {
             sourcePath = "//" + sourcePath.Trim(this.DirectorySeparator) + "/...";
