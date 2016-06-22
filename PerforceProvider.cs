@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Inedo.Agents;
 using Inedo.BuildMaster.Extensibility.Agents;
 using Inedo.BuildMaster.Extensibility.Providers;
 using Inedo.BuildMaster.Extensibility.Providers.SourceControl;
@@ -200,7 +201,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
             // copy files from workspace to targetPath
             var fullSourcePath = fileOps.CombinePath(
                 this.GetRootPath(),
-                sourcePathWithoutDepot.Replace(this.DirectorySeparator, fileOps.GetDirectorySeparator())
+                sourcePathWithoutDepot.Replace(this.DirectorySeparator, fileOps.DirectorySeparator)
             );
             return fullSourcePath;
         }
@@ -259,30 +260,25 @@ namespace Inedo.BuildMasterExtensions.Perforce
             }
 
 
-            var startInfo = new AgentProcessStartInfo
+            var startInfo = new RemoteProcessStartInfo
             {
                 FileName = this.ExePath,
                 Arguments = argBuffer.ToString()
             };
 
-            var process = this.Agent.GetService<IRemoteProcessExecuter<IBinaryDataProcess>>().CreateProcess(startInfo);
+            var process = this.Agent.GetService<IRemoteProcessExecuter>().CreateProcess(startInfo);
 
             this.LogDebug("Executing {0}", startInfo.FileName);
             this.LogDebug("  Arguments: {0}", argBufferToDisplay.ToString());
 
-            var stdErr = new MemoryStream();
-            process.ErrorDataReceived += (s, e) => stdErr.Write(e.Data, 0, e.Data.Length);
-
-            var stdOut = new MemoryStream();
-            process.OutputDataReceived += (s, e) => stdOut.Write(e.Data, 0, e.Data.Length);
-
-            process.Start();
-            process.WaitForExit();
+            var binaryOutput = this.ExecuteProcessBinary(startInfo.FileName, startInfo.Arguments);
+            var stdOut = new MemoryStream(binaryOutput.Item1, false);
+            var stdErr = new MemoryStream(binaryOutput.Item2, false);
 
             if (stdErr.Length > 0)
-                throw new ConnectionException(Encoding.UTF8.GetString(stdErr.ToArray()));
+                throw new ConnectionException(InedoLib.UTF8Encoding.GetString(stdErr.ToArray()));
 
-            this.LogDebug("Parsing {0} bytes of data.", stdOut.Length);
+            this.LogDebug($"Parsing {stdOut.Length} bytes of data.");
             var results = new List<Dictionary<string, string>>();
 
             try
@@ -347,9 +343,60 @@ namespace Inedo.BuildMasterExtensions.Perforce
             return argBuffer.ToString();
         }
 
+        private Tuple<byte[], byte[]> ExecuteProcessBinary(string fileName, string args)
+        {
+            var fileOps = this.Agent.GetService<IFileOperationsExecuter>();
+            RemoteProcessStartInfo startInfo;
+            string outFileName;
+            string errFileName;
+            if (fileOps.DirectorySeparator == '\\')
+            {
+                var remoteMethod = this.Agent.GetService<IRemoteMethodExecuter>();
+                outFileName = remoteMethod.InvokeFunc(Path.GetTempFileName);
+                errFileName = remoteMethod.InvokeFunc(Path.GetTempFileName);
+
+                startInfo = new RemoteProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"\"{fileName}\" {args} > \"{outFileName}\" 2> \"{errFileName}\"\""
+                };
+            }
+            else
+            {
+                outFileName = fileOps.CombinePath("/tmp", Guid.NewGuid().ToString("N") + "_p4");
+                errFileName = fileOps.CombinePath("/tmp", Guid.NewGuid().ToString("N") + "_p4");
+
+                startInfo = new RemoteProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = $"{args} > \"{outFileName}\" 2> \"{errFileName}\""
+                };
+            }
+
+            try
+            {
+                var result = this.ExecuteCommandLine(startInfo);
+
+                var outputData = fileOps.ReadFileBytes(outFileName);
+                var errorData = fileOps.ReadFileBytes(errFileName);
+
+                return Tuple.Create(outputData, errorData);
+            }
+            finally
+            {
+                try
+                {
+                    fileOps.DeleteFiles(new[] { outFileName, errFileName });
+                }
+                catch
+                {
+                }
+            }
+        }
+
         private static void CopyFolder(IFileOperationsExecuter fileOps, string sourcePath, string targetPath)
         {
-            fileOps.ClearFolder(targetPath);
+            fileOps.ClearDirectory(targetPath);
 
             var rootEntry = fileOps.GetDirectoryEntry(
                 new GetDirectoryEntryCommand
@@ -360,7 +407,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
                 }
             ).Entry;
 
-            var separator = fileOps.GetDirectorySeparator();
+            var separator = fileOps.DirectorySeparator;
 
             int sourcePathLength = sourcePath.EndsWith("/") ? sourcePath.Length : sourcePath.Length + 1;
 
@@ -425,7 +472,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
             if (length == 0)
                 return string.Empty;
 
-            return Encoding.UTF8.GetString(reader.ReadBytes(length));
+            return InedoLib.UTF8Encoding.GetString(reader.ReadBytes(length));
         }
     }
 }
