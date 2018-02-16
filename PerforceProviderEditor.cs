@@ -1,7 +1,7 @@
 ﻿using System.Web.UI.WebControls;
 using Inedo.BuildMaster.Extensibility.Providers;
-using Inedo.BuildMaster.Web.Controls;
 using Inedo.BuildMaster.Web.Controls.Extensions;
+using Inedo.Web;
 using Inedo.Web.Controls;
 
 namespace Inedo.BuildMasterExtensions.Perforce
@@ -12,7 +12,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
         private PasswordTextBox txtPassword;
         private ValidatingTextBox txtClient;
         private ValidatingTextBox txtServer;
-        private SourceControlFileFolderPicker txtP4ExecutablePath;
+        private FileBrowserTextBox txtP4ExecutablePath;
         private CheckBox chkUseForceSync;
 
         public override void BindToForm(ProviderBase extension)
@@ -44,7 +44,7 @@ namespace Inedo.BuildMasterExtensions.Perforce
             this.txtPassword = new PasswordTextBox();
             this.txtClient = new ValidatingTextBox();
             this.txtServer = new ValidatingTextBox();
-            this.txtP4ExecutablePath = new SourceControlFileFolderPicker { ServerId = this.EditorContext.ServerId };
+            this.txtP4ExecutablePath = new FileBrowserTextBox { ServerId = this.EditorContext.ServerId };
             this.chkUseForceSync = new CheckBox { Text = "Use Force Sync" };
 
             this.Controls.Add(
